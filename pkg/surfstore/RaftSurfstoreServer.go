@@ -2,7 +2,7 @@ package surfstore
 
 import (
 	context "context"
-	"fmt"
+	//"fmt"
 	"google.golang.org/grpc"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	"sync"
@@ -32,7 +32,7 @@ type RaftSurfstore struct {
 }
 
 func (s *RaftSurfstore) GetFileInfoMap(ctx context.Context, empty *emptypb.Empty) (*FileInfoMap, error) {
-	fmt.Println("Entering GetInfoMap")
+	//fmt.Println("Entering GetInfoMap")
 	//GetFileInfoMap: Returns the FileInfoMap of the SurfStore system.
 	//If the server is not the leader or has crashed, it returns an error.
 	//It also waits for a majority of servers to be alive before returning the FileInfoMap.
@@ -68,7 +68,7 @@ func (s *RaftSurfstore) GetFileInfoMap(ctx context.Context, empty *emptypb.Empty
 }
 
 func (s *RaftSurfstore) GetBlockStoreMap(ctx context.Context, hashes *BlockHashes) (*BlockStoreMap, error) {
-	fmt.Println("Entering GetBlockStoreMap")
+	//fmt.Println("Entering GetBlockStoreMap")
 	//GetBlockStoreMap: Returns the BlockStoreMap of the SurfStore system, given a list of block hashes.
 	//If the server is not the leader or has crashed, it returns an error.
 	//It also waits for a majority of servers to be alive before returning the BlockStoreMap.
@@ -103,7 +103,7 @@ func (s *RaftSurfstore) GetBlockStoreMap(ctx context.Context, hashes *BlockHashe
 }
 
 func (s *RaftSurfstore) GetBlockStoreAddrs(ctx context.Context, empty *emptypb.Empty) (*BlockStoreAddrs, error) {
-	fmt.Println("Entering GetBlock Store Address")
+	//fmt.Println("Entering GetBlock Store Address")
 	//leader Check
 	s.isLeaderMutex.Lock()
 	// If the server is not the leader, return an error
@@ -130,7 +130,7 @@ func (s *RaftSurfstore) GetBlockStoreAddrs(ctx context.Context, empty *emptypb.E
 }
 
 func (s *RaftSurfstore) checkMajorityAlive() bool {
-	fmt.Println("Entering Check Majority Alive")
+	//fmt.Println("Entering Check Majority Alive")
 	count := 1 //cuz
 	// for server
 	for i, peer := range s.peers {
@@ -190,24 +190,25 @@ func (s *RaftSurfstore) checkMajorityAlive() bool {
 }
 
 func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) (*Version, error) {
-	fmt.Println("Entering UpdateFile")
+	//fmt.Println("Entering UpdateFile in server", s.id, " filemeta", filemeta)
 	s.isLeaderMutex.RLock()
 	// If the server is not the leader, return an error
 	if !s.isLeader {
 		s.isLeaderMutex.RUnlock()
 		return nil, ERR_NOT_LEADER
 	}
-	s.isLeaderMutex.Unlock()
+	s.isLeaderMutex.RUnlock()
 
-	s.isCrashedMutex.Lock()
+	s.isCrashedMutex.RLock()
 	if s.isCrashed {
-		s.isCrashedMutex.Unlock()
+		s.isCrashedMutex.RUnlock()
 		return nil, ERR_SERVER_CRASHED
 		//Error("This server already crashed, couldn't take Append Entry")
 	}
-	s.isCrashedMutex.Unlock()
+	s.isCrashedMutex.RUnlock()
 
 	////
+	updated := false
 	var v Version
 	upd := new(UpdateOperation)
 	filename := filemeta.Filename
@@ -217,6 +218,8 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 		upd.FileMetaData = filemeta
 		upd.Term = s.term
 		v = Version{Version: filemeta.Version}
+		updated = true
+		//fmt.Println("New file")
 		//___________________________________
 		//s.metaStore.FileMetaMap[filename] = &FileMetaData{
 		//	Filename:      filename,
@@ -226,40 +229,46 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 		//return &Version{Version: 1}, nil
 	} else {
 		//file is present
-
+		//fmt.Println("Old file")
 		if filemeta.Version != s.metaStore.FileMetaMap[filemeta.Filename].Version+1 {
 			//return &Version{Version: -1}, nil
 			//fmt.Errorf("version number is not one greater than the current version number")
 			v = Version{Version: -1}
 			return &v, nil
 		} else {
+			updated = true
 			upd.Term = s.term
 			upd.FileMetaData = filemeta
 			v = Version{Version: filemeta.Version}
 		}
 		// Create a new UpdateOperation with the updated FileMetaData
-		op := &UpdateOperation{
-			Term:         s.term,
-			FileMetaData: filemeta,
-		}
+		//op := &UpdateOperation{
+		//	Term:         s.term,
+		//	FileMetaData: filemeta,
+		//}
 
-		// Append the new operation to the log
-		s.log = append(s.log, op)
 	}
+	if updated {
+		// Append the new operation to the log
+		s.log = append(s.log, upd)
+	}
+	if !updated {
 
-	//return &Version{Version: fileMetaData.Version}, nil
+		return &v, nil
+	}
 	could_upd := false
 	////
 
 	for {
 		//iteratively checking if the server crashes
-		s.isCrashedMutex.Lock()
+		s.isCrashedMutex.RLock()
 		if s.isCrashed {
-			s.isCrashedMutex.Unlock()
+			s.isCrashedMutex.RUnlock()
+
 			return nil, ERR_SERVER_CRASHED
 			//Error("This server already crashed, couldn't take Append Entry")
 		}
-		s.isCrashedMutex.Unlock()
+		s.isCrashedMutex.RUnlock()
 
 		//if s.checkMajorityAlive() {
 		//could_upd = true
@@ -267,13 +276,13 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 		for i, peer := range s.peers {
 
 			if s.id == int64(i) {
-				count_s += 1
+				count_s++
 				continue
 			}
 
-			s.isCrashedMutex.Lock()
+			s.isCrashedMutex.RLock()
 			crashStatus := s.isCrashed
-			s.isCrashedMutex.Unlock()
+			s.isCrashedMutex.RUnlock()
 			if crashStatus {
 				return nil, ERR_SERVER_CRASHED
 				//Error("This server already crashed, couldn't take Append Entry")
@@ -284,6 +293,7 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 			conn, err := grpc.Dial(peer, grpc.WithInsecure())
 			if err != nil {
 				// Handle error
+				conn.Close()
 				continue
 			}
 			//defer conn.Close()
@@ -321,6 +331,8 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 			//	//s.sameIndices[i]=r.sameIndex
 			//}
 			if err != nil {
+				cancel()
+				conn.Close()
 				continue
 			}
 			if r.Success {
@@ -332,6 +344,7 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 				}
 			}
 			cancel()
+			conn.Close()
 			/////////////////
 			//if len(s.peers)/2 < count1 {
 			//	s.commitIndex += 1
@@ -372,7 +385,7 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 // 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index
 // of last new entry)
 func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInput) (*AppendEntryOutput, error) {
-	fmt.Println("Entering Check Majority Alive")
+	//fmt.Println("Entering Append Entries ", s.id)
 	//s.isLeaderMutex.Lock()
 	//defer s.isLeaderMutex.Unlock()
 	//
@@ -381,13 +394,13 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 	//	//Error("This server already crashed, couldn't take Append Entry")
 	//}
 	//leader Check
-	s.isLeaderMutex.Lock()
-	// If the server is not the leader, return an error
-	if !s.isLeader {
-		s.isLeaderMutex.Unlock()
-		return nil, ERR_NOT_LEADER
-	}
-	s.isLeaderMutex.Unlock()
+	//s.isLeaderMutex.Lock()
+	//// If the server is not the leader, return an error
+	//if !s.isLeader {
+	//	s.isLeaderMutex.Unlock()
+	//	return nil, ERR_NOT_LEADER
+	//}
+	//s.isLeaderMutex.Unlock()
 
 	//crash Check
 	s.isCrashedMutex.Lock()
@@ -402,17 +415,21 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 	if input.Term < s.term {
 		return &AppendEntryOutput{Term: s.term, Success: false}, nil
 	}
-
+	//fmt.Println("1")
 	if input.Term > s.term {
 		// update term and convert to follower
 		s.isLeader = false
 		s.term = input.Term
 	}
+	//fmt.Println("2")
 
 	// check if log contains entry at prevLogIndex whose term matches prevLogTerm
-	if len(s.log) <= int(input.GetPrevLogIndex()) || s.log[input.GetPrevLogIndex()].Term != input.GetPrevLogTerm() {
-		return &AppendEntryOutput{Term: s.term, Success: false}, nil
+	if (input.PrevLogIndex) >= int64(0) {
+		if len(s.log) <= int(input.PrevLogIndex) || s.log[input.PrevLogIndex].Term != input.PrevLogTerm {
+			return &AppendEntryOutput{Term: s.term, Success: false}, nil
+		}
 	}
+	//fmt.Println("3")
 
 	// delete conflicting existing entry and all that follow it
 	for i := input.GetPrevLogIndex() + 1; i < int64(len(s.log)); i++ {
@@ -422,6 +439,7 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 		}
 	}
 
+	//fmt.Println("4")
 	// append any new entries not already in the log
 	s.log = append(s.log, input.Entries[int64(len(s.log))-input.GetPrevLogIndex()-1:]...)
 
@@ -437,37 +455,39 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 		}
 	}
 
+	//fmt.Println("5")
 	// apply all committed entries
 	for s.lastApplied < s.commitIndex {
 		entry := s.log[s.lastApplied+1]
 		s.metaStore.UpdateFile(ctx, entry.FileMetaData)
 		s.lastApplied++
 	}
-
+	//fmt.Println(s)
+	//fmt.Println("Exiting AppendEntries ", s.id)
 	return &AppendEntryOutput{Term: s.term, Success: true}, nil
 
 }
 
 func (s *RaftSurfstore) SetLeader(ctx context.Context, _ *emptypb.Empty) (*Success, error) {
-	fmt.Println("Entering Setting Leader")
+	//fmt.Println("Entering Setting Leader")
 
 	//leader Check
-	s.isLeaderMutex.Lock()
-	// If the server is not the leader, return an error
-	if !s.isLeader {
-		s.isLeaderMutex.Unlock()
-		return nil, ERR_NOT_LEADER
-	}
-	s.isLeaderMutex.Unlock()
+	//s.isLeaderMutex.Lock()
+	//// If the server is not the leader, return an error
+	//if !s.isLeader {
+	//	s.isLeaderMutex.Unlock()
+	//	return nil, ERR_NOT_LEADER
+	//}
+	//s.isLeaderMutex.Unlock()
 
 	////crash Check
-	//s.isCrashedMutex.Lock()
-	//crashStatus := s.isCrashed
-	//s.isCrashedMutex.Unlock()
-	//if crashStatus {
-	//	return nil, ERR_SERVER_CRASHED
-	//	//Error("This server already crashed, couldn't take Append Entry")
-	//}
+	s.isCrashedMutex.Lock()
+	crashStatus := s.isCrashed
+	s.isCrashedMutex.Unlock()
+	if crashStatus {
+		return nil, ERR_SERVER_CRASHED
+		//Error("This server already crashed, couldn't take Append Entry")
+	}
 
 	s.isLeader = true
 	s.term++
@@ -476,8 +496,8 @@ func (s *RaftSurfstore) SetLeader(ctx context.Context, _ *emptypb.Empty) (*Succe
 }
 
 func (s *RaftSurfstore) SendHeartbeat(ctx context.Context, _ *emptypb.Empty) (*Success, error) {
-
-	fmt.Println("Entering SendHeartBeat")
+	//fmt.Println(s)
+	//fmt.Println("Entering SendHeartBeat")
 	//leader Check
 	s.isLeaderMutex.Lock()
 	// If the server is not the leader, return an error
@@ -487,6 +507,7 @@ func (s *RaftSurfstore) SendHeartbeat(ctx context.Context, _ *emptypb.Empty) (*S
 	}
 	s.isLeaderMutex.Unlock()
 
+	//fmt.Println("After Leader Check")
 	//crash Check
 	s.isCrashedMutex.Lock()
 	crashStatus := s.isCrashed
@@ -496,6 +517,7 @@ func (s *RaftSurfstore) SendHeartbeat(ctx context.Context, _ *emptypb.Empty) (*S
 		//Error("This server already crashed, couldn't take Append Entry")
 	}
 
+	//fmt.Println("After Checks")
 	// Create an AppendEntryInput object with empty entries to send a heartbeat
 	//input := &AppendEntryInput{
 	//	Term:         s.term,
@@ -519,14 +541,20 @@ func (s *RaftSurfstore) SendHeartbeat(ctx context.Context, _ *emptypb.Empty) (*S
 		//if err != nil {
 		//	continue
 		//}
+
+		if s.id == int64(i) {
+			continue
+		}
+		//fmt.Println("Dialing now...And my i, sid is ", i, s.id)
 		conn, err := grpc.Dial(peer, grpc.WithInsecure())
 		if err != nil {
 			// Handle error
+			conn.Close()
 			continue
 			//return nil, err
 		}
 		//defer conn.Close()
-
+		//fmt.Println("Creating NewRaftStoreClient", i)
 		client := NewRaftSurfstoreClient(conn)
 		t := int64(-1)
 		//e := s.log
@@ -546,16 +574,20 @@ func (s *RaftSurfstore) SendHeartbeat(ctx context.Context, _ *emptypb.Empty) (*S
 			Entries:      e,
 			LeaderCommit: s.commitIndex,
 		}
-
+		//fmt.Println("Creating context and append entries", i)
 		nctx, cancel := context.WithTimeout(context.Background(), time.Second)
+
 		_, err = client.AppendEntries(nctx, input)
 		cancel()
 		if err != nil {
+			conn.Close()
+			//fmt.Println("Error in AppendEntries", i)
 			continue
 		}
-		_ = conn.Close()
-
+		conn.Close()
+		//fmt.Println("loop done for", i)
 	}
+	//fmt.Println("All heartbeat sent")
 	return &Success{Flag: true}, nil
 }
 
@@ -578,7 +610,9 @@ func (s *RaftSurfstore) Restore(ctx context.Context, _ *emptypb.Empty) (*Success
 }
 
 func (s *RaftSurfstore) GetInternalState(ctx context.Context, empty *emptypb.Empty) (*RaftInternalState, error) {
+	//fmt.Println("entered getInternalState")
 	fileInfoMap, _ := s.metaStore.GetFileInfoMap(ctx, empty)
+	//fmt.Println("returned the fileInfoMap")
 	s.isLeaderMutex.RLock()
 	state := &RaftInternalState{
 		IsLeader: s.isLeader,

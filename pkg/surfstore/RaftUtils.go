@@ -46,11 +46,16 @@ func NewRaftServer(id int64, config RaftConfig) (*RaftSurfstore, error) {
 
 	server := RaftSurfstore{
 
-		isLeader:       false,
-		isLeaderMutex:  &isLeaderMutex,
+		isLeader:      false,
+		isLeaderMutex: &isLeaderMutex,
+		id:            id,
+		peers:         config.RaftAddrs,
+		//pendingCommits []*chan bool
+		commitIndex:    int64(-1),
+		lastApplied:    int64(-1),
 		sameIndices:    myArray,
-		sameIndex:      -1,
-		term:           0,
+		sameIndex:      int64(-1),
+		term:           int64(0),
 		metaStore:      NewMetaStore(config.BlockAddrs),
 		log:            make([]*UpdateOperation, 0),
 		isCrashed:      false,
@@ -62,8 +67,7 @@ func NewRaftServer(id int64, config RaftConfig) (*RaftSurfstore, error) {
 
 // TODO Start up the Raft server and any services here
 func ServeRaftServer(server *RaftSurfstore) error {
-	//panic("todo")
-	// panic("todo")
+
 	grpcServer := grpc.NewServer()
 	RegisterRaftSurfstoreServer(grpcServer, server)
 
