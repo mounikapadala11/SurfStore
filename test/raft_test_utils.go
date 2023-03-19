@@ -4,6 +4,12 @@ import (
 	context "context"
 	"cse224/proj5/pkg/surfstore"
 	"fmt"
+
+	//"fmt"
+
+	//"fmt"
+
+	//"fmt"
 	"google.golang.org/grpc"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	"log"
@@ -25,12 +31,16 @@ type TestInfo struct {
 }
 
 func InitTest(cfgPath string) TestInfo {
+	//fmt.Println("before congig loadRsftConfig Fie", cfgPath)
 	cfg := surfstore.LoadRaftConfigFile(cfgPath)
+	//fmt.Println("Loaded the configPath")
 
 	procs := make([]*exec.Cmd, 0)
-	procs = append(procs, InitBlockStores(cfg.BlockAddrs)...)
-	procs = append(procs, InitRaftServers(cfgPath, cfg)...)
 
+	procs = append(procs, InitBlockStores(cfg.BlockAddrs)...)
+	//fmt.Println("Done InitBlockStore", procs)
+	procs = append(procs, InitRaftServers(cfgPath, cfg)...)
+	//fmt.Println("Loaded the procs", procs)
 	conns := make([]*grpc.ClientConn, 0)
 	clients := make([]surfstore.RaftSurfstoreClient, 0)
 	for _, addr := range cfg.RaftAddrs {
@@ -78,7 +88,9 @@ func InitBlockStores(blockStoreAddrs []string) []*exec.Cmd {
 	blockCmdList := make([]*exec.Cmd, 0)
 	for _, addr := range blockStoreAddrs {
 		port := strings.Split(addr, ":")[1]
+		//fmt.Println("entered InitBlockStore and entered for loop")
 		blockCmd := exec.Command("_bin/SurfstoreServerExec", "-d", "-s", "block", "-p", port, "-l")
+		//fmt.Println("Executed the blockCmd")
 		blockCmd.Stderr = os.Stderr
 		blockCmd.Stdout = os.Stdout
 		err := blockCmd.Start()
