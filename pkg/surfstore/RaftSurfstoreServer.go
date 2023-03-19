@@ -491,7 +491,9 @@ func (s *RaftSurfstore) SetLeader(ctx context.Context, _ *emptypb.Empty) (*Succe
 
 	s.isLeader = true
 	s.term++
-	return nil, nil
+	return &Success{
+		Flag: true,
+	}, nil
 
 }
 
