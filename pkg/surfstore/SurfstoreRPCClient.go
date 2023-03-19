@@ -220,9 +220,9 @@ func (surfClient *RPCClient) GetBlockStoreMap(blockHashesIn []string, blockStore
 			}
 			*blockStoreMap = temp_hm
 			cancel()
-
+			conn.Close()
 		}
-		conn.Close()
+		//conn.Close()
 		// close the connection
 
 	}
