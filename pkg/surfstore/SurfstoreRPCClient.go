@@ -1,3 +1,4 @@
+
 package surfstore
 
 import (
@@ -115,10 +116,10 @@ func (surfClient *RPCClient) GetBlockHashes(blockStoreAddr string, blockHashes *
 }
 
 func (surfClient *RPCClient) GetFileInfoMap(serverFileInfoMap *map[string]*FileMetaData) error {
-	// panic("todo")
 	for _, l := range surfClient.MetaStoreAddrs {
 		conn, err := grpc.Dial(l, grpc.WithInsecure())
 		if err != nil {
+			//conn.Close()
 			return err
 		}
 
@@ -128,14 +129,16 @@ func (surfClient *RPCClient) GetFileInfoMap(serverFileInfoMap *map[string]*FileM
 
 		// perform the remote call
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
+		//defer
 		res, err := c.GetFileInfoMap(ctx, &emptypb.Empty{})
 		if err != nil {
 			//return err
+			cancel()
 			conn.Close()
 			continue
 		} else {
 			// copy the server response to the output parameter
+			cancel()
 			*serverFileInfoMap = res.FileInfoMap
 			return conn.Close()
 		}
@@ -149,6 +152,7 @@ func (surfClient *RPCClient) UpdateFile(fileMetaData *FileMetaData, latestVersio
 	for _, l := range surfClient.MetaStoreAddrs {
 		conn_updatefile, err := grpc.Dial(l, grpc.WithInsecure())
 		if err != nil {
+			//conn_updatefile.Close()
 			return err
 		}
 		//defer conn_updatefile.Close()
@@ -159,17 +163,21 @@ func (surfClient *RPCClient) UpdateFile(fileMetaData *FileMetaData, latestVersio
 
 		// Update the file metadata on the server
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
+
 		version, err := c.UpdateFile(ctx, fileMetaData)
 		if err != nil {
 			//return err
+			cancel()
 			conn_updatefile.Close()
 			continue
 		} else {
 			// Update the latest version
+			cancel()
 			*latestVersion = version.Version
 			return conn_updatefile.Close()
 		}
+		//cancel()
+		//conn_updatefile.Close()
 	}
 	os.Exit(1)
 	return nil
@@ -191,11 +199,10 @@ func (surfClient *RPCClient) GetBlockStoreMap(blockHashesIn []string, blockStore
 
 		// perform the remote call
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
 		res, err := c.GetBlockStoreMap(ctx, hashes)
 		if err != nil {
 			//return err
-			//cancel()
+			cancel()
 			conn.Close()
 			continue
 		} else {
@@ -213,10 +220,10 @@ func (surfClient *RPCClient) GetBlockStoreMap(blockHashesIn []string, blockStore
 				temp_hm[t] = h_m.Hashes
 			}
 			*blockStoreMap = temp_hm
-			return conn.Close()
-
+			cancel()
+			conn.Close()
 		}
-
+		//conn.Close()
 		// close the connection
 
 	}
@@ -247,6 +254,7 @@ func (surfClient *RPCClient) GetBlockStoreAddrs(blockStoreAddrs *[]string) error
 			conn.Close()
 			continue
 		}
+
 	}
 	os.Exit(1)
 	return nil

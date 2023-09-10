@@ -432,12 +432,14 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 	//fmt.Println("3")
 
 	// delete conflicting existing entry and all that follow it
-	for i := input.GetPrevLogIndex() + 1; i < int64(len(s.log)); i++ {
-		if s.log[i].Term != input.Entries[i-input.GetPrevLogIndex()-1].Term {
-			s.log = s.log[:i]
-			break
-		}
-	}
+	//for i := input.GetPrevLogIndex() + 1; i < int64(len(s.log)); i++ {
+	//	//if s.log[i].Term != input.Entries[i-input.PrevLogIndex-1].Term {
+	//	//	s.log = s.log[:i]
+	//	//	break
+	//	//}
+	//}
+	s.log =s.log[:input.PrevLogIndex+1]
+	s.log=append(s.log,input.Entries...)
 
 	//fmt.Println("4")
 	// append any new entries not already in the log
@@ -491,7 +493,9 @@ func (s *RaftSurfstore) SetLeader(ctx context.Context, _ *emptypb.Empty) (*Succe
 
 	s.isLeader = true
 	s.term++
-	return nil, nil
+	return &Success{
+		Flag: true,
+	}, nil
 
 }
 
